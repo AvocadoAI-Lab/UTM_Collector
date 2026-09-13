@@ -20,6 +20,23 @@ sudo apt update
 sudo apt install -y curl ca-certificates iproute2
 ```
 
+## From clone to deployment
+
+`dist/` is intentionally not committed because it contains compiled binaries. A new deployment host can build the release package from a clone:
+
+```bash
+git clone git@github.com:AvocadoAI-Lab/UTM_Collector.git
+cd UTM_Collector
+sudo apt update
+sudo apt install -y golang curl ca-certificates iproute2
+go version
+./scripts/build.sh 1.0.0
+cd dist/pico-utm-agent-linux-amd64
+chmod +x agent syslog-gen install.sh uninstall.sh
+```
+
+Then follow the Ubuntu installation section below. Alternatively, obtain the prebuilt `pico-utm-agent-linux-amd64` package from the release owner and skip the build step.
+
 ## Release package
 
 Use the contents of `dist/pico-utm-agent-linux-amd64`. The package contains:
