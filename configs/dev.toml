@@ -1,0 +1,32 @@
+# 本機開發用設定：搭配 mockserver（go run ./cmd/mockserver）
+# 執行：go run ./cmd/agent run --config configs/dev.toml
+
+[agent]
+agent_id = "550e8400-e29b-41d4-a716-446655440000"
+site_id  = "dev-desktop"
+
+[listener]
+addr = "0.0.0.0"
+port = 5514
+
+[forwarder]
+endpoint = "https://localhost:8443"
+token = "dev-token"
+batch_size = 500
+batch_interval_seconds = 5
+ca_file = "mock-certs/mock-ca.pem"
+
+[heartbeat]
+interval_seconds = 60
+
+[spool]
+dir = "dev-data/spool"
+retention_days = 30
+max_size_gb = 1
+
+[logging]
+level = "debug"
+dir = "dev-data/logs"
+
+[proxy]
+url = ""

@@ -1,0 +1,25 @@
+# Build output and local test artifacts
+dist/
+.cache/
+dev-data/
+mock-certs/
+syslog_logs/
+*.exe
+*.test
+*.out
+
+# Local configuration and secrets
+config.toml
+*.local.toml
+*.pem
+*.key
+*.crt
+
+# Editors and operating systems
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+docs/
+configs/dev.toml
