@@ -20,39 +20,38 @@ sudo apt update
 sudo apt install -y curl ca-certificates iproute2
 ```
 
-## From clone to deployment
+## Download the Agent release
 
-`dist/` is intentionally not committed because it contains compiled binaries. A new deployment host can build the release package from a clone:
+Customer deployment hosts should download the Linux Agent package from GitHub Releases; they do not need the repository, Go toolchain, Collector source, or development tools.
 
 ```bash
-git clone git@github.com:AvocadoAI-Lab/UTM_Collector.git
-cd UTM_Collector
-sudo apt update
-sudo apt install -y golang curl ca-certificates iproute2
-go version
-./scripts/build.sh 1.0.0
-cd dist/pico-utm-agent-linux-amd64
-chmod +x agent syslog-gen install.sh uninstall.sh
+curl -LO https://github.com/AvocadoAI-Lab/UTM_Collector/releases/download/v1.0.0/pico-utm-agent-1.0.0-linux-amd64.tar.gz
+curl -LO https://github.com/AvocadoAI-Lab/UTM_Collector/releases/download/v1.0.0/SHA256SUMS-1.0.0.txt
+sha256sum -c SHA256SUMS-1.0.0.txt --ignore-missing
+tar -xzf pico-utm-agent-1.0.0-linux-amd64.tar.gz
+cd pico-utm-agent-1.0.0-linux-amd64
+chmod +x agent install.sh uninstall.sh
 ```
 
-Then follow the Ubuntu installation section below. Alternatively, obtain the prebuilt `pico-utm-agent-linux-amd64` package from the release owner and skip the build step.
+Collector maintainers and developers may clone the complete repository. Build Agent release artifacts with `./scripts/build.sh 1.0.0` or `.\scripts\build.ps1 -Version 1.0.0`; generated files remain under the ignored `dist/` directory.
 
 ## Release package
 
-Use the contents of `dist/pico-utm-agent-linux-amd64`. The package contains:
+The Agent release package contains only deployment files:
 
 ```text
-agent       Agent CLI and service process
-syslog-gen  Optional UDP test-event generator
-install.sh  Installer
-uninstall.sh  Uninstaller (keeps customer data)
+agent                Agent CLI and service process
+install.sh           Installer
+uninstall.sh         Uninstaller (keeps customer data)
+config.example.toml  Configuration reference
+README.md            Deployment and troubleshooting instructions
 ```
 
 Run all commands below from that directory:
 
 ```bash
-cd /path/to/pico-utm-agent-linux-amd64
-chmod +x agent syslog-gen install.sh uninstall.sh
+cd /path/to/pico-utm-agent-1.0.0-linux-amd64
+chmod +x agent install.sh uninstall.sh
 ```
 
 ## Install on Ubuntu 24.04
@@ -97,10 +96,11 @@ sudo /usr/local/bin/pico-utm-agent logs -n 50
 
 Expected results are `active`, `enabled`, a UDP 5514 listener owned by `pico-utm-agent`, and configuration mode `600`.
 
-Optional test from another machine (replace `VM_IP`):
+Optional test from another Linux machine (replace `AGENT_IP`):
 
 ```bash
-./syslog-gen -target VM_IP:5514 -n 100 -rate 20 -start-id 987654300000000
+logger --udp --server AGENT_IP --port 5514 \
+  '<14>Sep 13 12:00:00 test-host user_act[1]: {"event_id":"manual-test-1","msg":"deployment test"}'
 ```
 
 After sending, `events_received_total` should increase in `status`; `events_forwarded_total` increases after the collector accepts the batch.
