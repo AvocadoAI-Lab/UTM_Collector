@@ -21,5 +21,9 @@ config.toml
 *.swp
 .DS_Store
 Thumbs.db
+
+# Internal planning notes (not part of the public project)
+plan.md
+api_plan.md
 docs/
 configs/dev.toml
