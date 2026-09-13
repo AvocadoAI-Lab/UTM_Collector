@@ -358,7 +358,7 @@ add_rollback "Stop agent before restoring files" "systemctl stop '$SERVICE'"
 
 # ---------------------------------------------------------------------------
 step "執行 agent test"
-runuser -u "$SVC_USER" -- "$BIN" test --config "$CONF" 2>&1 | sed 's/^/    /'
+"$BIN" test --config "$CONF" 2>&1 | sed 's/^/    /'
 
 # ---------------------------------------------------------------------------
 step "啟動服務"
