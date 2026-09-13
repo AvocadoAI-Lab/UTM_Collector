@@ -30,7 +30,7 @@ LOG_DIR=/var/log/pico-utm-agent
 MOCK_PORT=18443
 UDP_PORT=5514
 ENDPOINT="https://127.0.0.1:$MOCK_PORT"
-WORK=/tmp/pico-utm-agent-verify
+WORK=/var/lib/pico-utm-agent-verify
 CA=$WORK/certs/mock-ca.pem
 TOKEN="verify-$(tr -d '-' </proc/sys/kernel/random/uuid)"
 
