@@ -10,6 +10,8 @@ syslog_logs/
 
 # Local configuration and secrets
 config.toml
+.env
+.env.*
 *.local.toml
 *.pem
 *.key

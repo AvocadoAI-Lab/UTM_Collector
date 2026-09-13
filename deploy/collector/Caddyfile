@@ -1,0 +1,8 @@
+{$COLLECTOR_DOMAIN} {
+    encode zstd gzip
+    reverse_proxy collector:8080
+    log {
+        output stdout
+        format json
+    }
+}

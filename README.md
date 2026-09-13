@@ -1,10 +1,17 @@
-# Pico-UTM Collector Agent
+# Pico-UTM Collector
 
-Pico-UTM Agent receives UDP Syslog events, stores them in a local spool, and forwards them to an HTTPS collector.
+This repository contains both sides of the Pico-UTM event pipeline:
 
-This document is for deployment and operations. The mock server and `verify` scripts in this repository are development tools.
+- **Agent** runs inside the customer network, receives UDP Syslog events, stores them in a local spool, and forwards them over HTTPS.
+- **Collector API Server** runs on an Internet-reachable server and persists events and Agent heartbeats in PostgreSQL.
 
-## Requirements
+```text
+Pico-UTM --UDP 5514--> Agent --HTTPS 443--> Collector API --> PostgreSQL
+```
+
+The mock server, `syslog-gen`, and `verify` scripts are development tools and are not required in production.
+
+## Agent requirements
 
 - Ubuntu 24.04 Server with systemd
 - root or `sudo` access
@@ -187,3 +194,183 @@ sudo ss -ulnp | grep 5514 || echo PASS-port-released
 ## Development tools
 
 `cmd/mockserver`, `scripts/verify.sh`, `scripts/verify.ps1`, and the related tests are for development and CI validation. They are not required on a production deployment host.
+
+## Deploy the Collector API Server
+
+The Collector deployment runs Caddy, the Go API, and PostgreSQL with Docker Compose. Caddy obtains a public TLS certificate and exposes HTTPS. PostgreSQL and the API container are not published directly to the Internet.
+
+### Server requirements
+
+- An Internet-reachable Linux server with a persistent disk
+- A domain such as `collector.example.com` with an A/AAAA record pointing to the server
+- Inbound TCP ports 80 and 443 allowed by the cloud firewall, router, and host firewall
+- Docker Engine with the Compose plugin
+- Git for obtaining and updating the repository
+
+Verify the domain before starting Caddy:
+
+```bash
+getent hosts collector.example.com
+```
+
+The returned address must match the server's public IP. Port 80 is required for initial certificate issuance and renewal; Agents connect to port 443.
+
+### Configure and start
+
+Clone the repository on the Collector server:
+
+```bash
+git clone https://github.com/AvocadoAI-Lab/UTM_Collector.git
+cd UTM_Collector/deploy/collector
+cp env.example .env
+```
+
+Generate separate random values for the database password and Agent token:
+
+```bash
+openssl rand -hex 32
+openssl rand -hex 32
+```
+
+Edit `.env` and replace the example domain and secrets:
+
+```dotenv
+COLLECTOR_DOMAIN=collector.example.com
+POSTGRES_DB=collector
+POSTGRES_USER=collector
+POSTGRES_PASSWORD=REPLACE_WITH_DATABASE_PASSWORD
+COLLECTOR_TOKENS=REPLACE_WITH_AGENT_TOKEN
+MIN_SUPPORTED_VERSION=1.0.0
+MAX_BODY_BYTES=67108864
+```
+
+Protect the file and start the stack:
+
+```bash
+chmod 600 .env
+docker compose up -d --build
+docker compose ps
+```
+
+All three services should be running; PostgreSQL should become `healthy`. The Collector automatically applies its idempotent schema migration at startup. Database data and Caddy TLS state remain in named Docker volumes.
+
+### Verify the Collector
+
+Load the first configured token without printing it, then call the authenticated health endpoint:
+
+```bash
+set -a
+. ./.env
+set +a
+TOKEN=${COLLECTOR_TOKENS%%,*}
+curl --fail --silent --show-error \
+  -H "Authorization: Bearer $TOKEN" \
+  "https://${COLLECTOR_DOMAIN}/healthz"
+unset TOKEN COLLECTOR_TOKENS POSTGRES_PASSWORD
+```
+
+Expected response:
+
+```json
+{"ok":true,"server_time":"2026-09-13T12:00:00.000Z"}
+```
+
+If verification fails, inspect the services and logs:
+
+```bash
+docker compose ps
+docker compose logs --tail=100 collector
+docker compose logs --tail=100 caddy
+docker compose logs --tail=100 postgres
+```
+
+The production API exposes only these authenticated endpoints:
+
+```text
+GET  /healthz
+POST /events
+POST /heartbeat
+```
+
+It accepts gzip and uncompressed JSON, limits compressed and decompressed bodies to 64 MiB by default, writes event batches transactionally, and deduplicates retried batches and events. A successful `/healthz` also confirms PostgreSQL connectivity.
+
+### Connect an Agent
+
+Use the Collector domain and one of the tokens from `COLLECTOR_TOKENS` when installing the Agent. Pass the base URL without `/events`:
+
+```bash
+sudo ./install.sh \
+  --endpoint https://collector.example.com \
+  --token 'THE_SAME_AGENT_TOKEN' \
+  --site-id acme-taipei-hq \
+  --port 5514 \
+  --log-level info
+```
+
+Caddy uses a public certificate, so `--ca-file` is unnecessary. After sending a Syslog event, verify that `收到事件` and `已轉送` increase:
+
+```bash
+sudo /usr/local/bin/pico-utm-agent status
+sudo /usr/local/bin/pico-utm-agent logs -n 50
+```
+
+On the Collector server, a successful request appears in the Caddy access log without a storage error in the Collector log:
+
+```bash
+docker compose logs --since=10m caddy collector
+```
+
+### Token rotation
+
+`COLLECTOR_TOKENS` accepts multiple comma-separated tokens. Add the new token alongside the old token, recreate the Collector, update the Agents, and then remove the old token:
+
+```dotenv
+COLLECTOR_TOKENS=NEW_TOKEN,OLD_TOKEN
+```
+
+```bash
+docker compose up -d --no-deps --force-recreate collector
+```
+
+Tokens are compared as SHA-256 digests in constant time and are not written to application logs. Never commit `.env` or paste its contents into issue reports.
+
+### Backup and update
+
+Create a PostgreSQL backup outside the Docker volume:
+
+```bash
+set -a
+. ./.env
+set +a
+docker compose exec -T postgres \
+  pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Fc > "collector-$(date +%F).dump"
+unset POSTGRES_PASSWORD COLLECTOR_TOKENS
+```
+
+Update the source and recreate changed containers:
+
+```bash
+cd /path/to/UTM_Collector
+git pull --ff-only
+cd deploy/collector
+docker compose up -d --build
+docker compose ps
+```
+
+Do not run `docker compose down -v` unless the PostgreSQL data and Caddy state should be deleted.
+
+### Direct development
+
+Direct, non-container development requires a reachable PostgreSQL database:
+
+```bash
+export DATABASE_URL='postgres://collector:password@localhost:5432/collector?sslmode=disable'
+export COLLECTOR_TOKENS='development-token'
+go run ./cmd/collector
+```
+
+Run the test suite with:
+
+```bash
+go test ./...
+```
